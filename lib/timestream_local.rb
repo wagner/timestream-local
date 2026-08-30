@@ -17,7 +17,7 @@ require_relative "timestream_local/scheduled_query_api"
 require_relative "timestream_local/server"
 
 module TimestreamLocal
-  VERSION = "1.0.0"
+  VERSION = "1.0.1"
 
   module_function
 

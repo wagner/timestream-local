@@ -106,8 +106,8 @@ module TimestreamLocal
 
         # Every reference has now been resolved, so from here an identifier is a
         # terminal: nothing inside a quoted name is an operator or a literal.
-        # Masking them is what keeps a table called `data_point-PT1M-346eea-20250d`
-        # from having its `-20250d` read as "minus 20250 days". A masked
+        # Masking them is what keeps a table called `readings-PT1M-0f9c2a-41830d`
+        # from having its `-41830d` read as "minus 41830 days". A masked
         # identifier is still a single term, so `"time" - 5m` keeps working.
         identifiers = []
         code = code.gsub(IDENT) do |identifier|

@@ -12,7 +12,7 @@ them back. It is not feature complete and does not try to be.
 Published to GitHub Container Registry, and public — no login is needed to pull.
 
 ```sh
-docker pull ghcr.io/wagner/timestream-local:1.0.0
+docker pull ghcr.io/wagner/timestream-local:1.0.1
 ```
 
 In another app's `docker-compose.yml`:
@@ -20,7 +20,7 @@ In another app's `docker-compose.yml`:
 ```yaml
 services:
   timestream:
-    image: ghcr.io/wagner/timestream-local:1.0.0
+    image: ghcr.io/wagner/timestream-local:1.0.1
     ports: ["8080:8080"]
     environment:
       TIMESTREAM_LOCAL_ADVERTISED_ENDPOINT: "http://localhost:8080"
@@ -28,9 +28,10 @@ services:
       TIMESTREAM_LOCAL_S3_ENDPOINT: "http://minio:9000"
 ```
 
-Tags are `1.0.0`, `1.0` and `1` — pin the full version in CI and float on `1` in
-development if you want fixes without re-pinning. Images are published for
-`linux/amd64` and `linux/arm64`.
+Each release publishes three tags — the full version, the minor series and the
+major series (`1.0.1`, `1.0`, `1`). Pin the full version anywhere reproducibility
+matters; the two shorter tags move forward as releases are cut. Images are
+published for `linux/amd64` and `linux/arm64`.
 
 ## Quick start
 
@@ -210,8 +211,8 @@ rule cannot be switched off from Ruby: it needs `sqlite3_db_config`, which the
 
 Identifiers are also *terminals*: once table and column references are resolved,
 nothing inside a quoted name is treated as an operator or a literal. Without that,
-a table called `data_point-PT1M-346eea-20250d` has its `-20250d` read as "minus
-20250 days" and fails to resolve — which reads as provisioning having gone wrong
+a table called `readings-PT1M-0f9c2a-41830d` has its `-41830d` read as "minus
+41830 days" and fails to resolve — which reads as provisioning having gone wrong
 rather than as a query bug, because the table plainly exists.
 
 ### Timestamp literals
@@ -341,9 +342,9 @@ constant disagree, then builds and pushes to ghcr.io and smoke tests what it
 pushed.
 
 ```sh
-# bump VERSION in lib/timestream_local.rb, commit, then:
-git tag v1.0.0
-git push origin v1.0.0
+# bump VERSION in lib/timestream_local.rb, commit, then tag it to match:
+git tag "v$(ruby -e 'print File.read("lib/timestream_local.rb")[/VERSION = "([^"]+)"/, 1]')"
+git push origin --tags
 ```
 
 Builds are frozen against the committed `Gemfile.lock`, so rebuilding a tag

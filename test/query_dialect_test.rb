@@ -118,11 +118,11 @@ class QueryDialectTest < TimestreamTest
 
   # A quoted identifier is a terminal: nothing inside a name is an operator or a
   # literal. Table names here are `<prefix>-<interval>-<id>-<id>` where the ids
-  # are the tail of a UUID, so a name ending `-20250d` is ordinary -- and was
-  # being read as "minus 20250 days", producing `no such table` for a table that
+  # are the tail of a UUID, so a name ending `-41830d` is ordinary -- and was
+  # being read as "minus 41830 days", producing `no such table` for a table that
   # exists. Hex ids make `d` reachable, so this was routine rather than exotic.
   INTERVAL_SHAPED_NAMES = %w[
-    data_point-PT1M-346eea-20250d tbl-20250d tbl-5m tbl-1h tbl-7d tbl-3s
+    readings-PT1M-0f9c2a-41830d tbl-41830d tbl-5m tbl-1h tbl-7d tbl-3s
     tbl-5m-tail tbl-1d-2h tbl-5mx tbl-a5m tbl5m tbl-abc123 tbl-2026
   ].freeze
 
@@ -191,7 +191,7 @@ class QueryDialectTest < TimestreamTest
   def test_a_table_whose_name_ends_in_an_interval_is_queryable
     database_name = unique("db")
     # The real shape: prefix, interval, then two six-hex-character UUID tails.
-    table_name = "data_point-PT1M-346eea-20250d"
+    table_name = "readings-PT1M-0f9c2a-41830d"
     write_client.create_database(database_name: database_name)
     write_client.create_table(database_name: database_name, table_name: table_name)
 
