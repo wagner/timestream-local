@@ -1,0 +1,30 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "puma"
+require "puma/configuration"
+require "puma/launcher"
+
+require_relative "../lib/timestream_local"
+
+host = ENV.fetch("TIMESTREAM_LOCAL_HOST", "0.0.0.0")
+port = Integer(ENV.fetch("TIMESTREAM_LOCAL_PORT", "8080"))
+data = ENV.fetch("TIMESTREAM_LOCAL_DATA", "/data/timestream.db")
+
+# The address DescribeEndpoints hands back has to be reachable from the client,
+# not from inside the container -- so it is configured separately from the bind.
+TimestreamLocal::Server.advertised_address =
+  ENV.fetch("TIMESTREAM_LOCAL_ADVERTISED_ENDPOINT", "http://localhost:#{port}")
+
+app = TimestreamLocal.build(path: data)
+
+configuration = Puma::Configuration.new do |config|
+  config.bind("tcp://#{host}:#{port}")
+  config.app(app)
+  config.threads(1, Integer(ENV.fetch("TIMESTREAM_LOCAL_THREADS", "8")))
+  config.log_requests(ENV["TIMESTREAM_LOCAL_LOG_REQUESTS"] == "true")
+  config.environment("production")
+end
+
+warn "timestream-local #{TimestreamLocal::VERSION} listening on http://#{host}:#{port} (data: #{data})"
+Puma::Launcher.new(configuration).run

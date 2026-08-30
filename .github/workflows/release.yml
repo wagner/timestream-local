@@ -1,0 +1,101 @@
+name: release
+
+# Publishes the image to GitHub Container Registry on a version tag. A package
+# inherits the visibility of the repository it is linked to at the time it is
+# first published, so publish only after this repository is public -- a package
+# created while it was private stays private until changed by hand.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to publish (e.g. v1.0.0)"
+        required: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ${{ github.repository }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+      - name: Run the suite
+        run: bundle exec rake test
+
+      # The tag and the VERSION constant are two places the same number is
+      # written; a release where they disagree is worse than one that fails.
+      - name: Check the tag matches VERSION
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          version="v$(ruby -e 'require "./lib/timestream_local"; print TimestreamLocal::VERSION')"
+          echo "tag=$tag version=$version"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::Tag $tag does not match VERSION $version in lib/timestream_local.rb"
+            exit 1
+          fi
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # arm64 is emulated here, and it is the slow part of this workflow because
+      # the native gems compile under QEMU. Runner minutes are free on a public
+      # repository, so the cost is wall clock on a tag push rather than money;
+      # split into per-arch native runners with a manifest merge if that matters.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ github.event.inputs.tag || github.ref_name }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ github.event.inputs.tag || github.ref_name }}
+            type=semver,pattern={{major}},value=${{ github.event.inputs.tag || github.ref_name }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ github.event.inputs.tag || github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Smoke test the published amd64 image rather than trusting that a
+      # successful build means a working server.
+      - name: Smoke test the published image
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          image=$(echo "$TAGS" | head -1)
+          echo "smoke testing $image"
+          docker run -d --name smoke -p 8080:8080 "$image"
+          for _ in $(seq 1 30); do
+            curl -sf http://localhost:8080/health && break
+            sleep 1
+          done
+          curl -sf http://localhost:8080/health || { docker logs smoke; exit 1; }
+          docker rm -f smoke

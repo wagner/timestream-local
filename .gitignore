@@ -1,0 +1,6 @@
+*.db
+*.db-wal
+*.db-shm
+.ruby-lsp/
+tmp/
+.DS_Store

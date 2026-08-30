@@ -1,0 +1,57 @@
+services:
+  timestream:
+    build: .
+    image: timestream-local:dev
+    ports:
+      - "${TIMESTREAM_LOCAL_PORT:-8080}:8080"
+    environment:
+      # Handed back by DescribeEndpoints, so it must be the address the client
+      # reaches -- not the container's internal bind address.
+      TIMESTREAM_LOCAL_ADVERTISED_ENDPOINT: "http://localhost:${TIMESTREAM_LOCAL_PORT:-8080}"
+      TIMESTREAM_LOCAL_REGION: "${AWS_REGION:-us-east-1}"
+      TIMESTREAM_LOCAL_DATA: /data/timestream.db
+      # Where scheduled-query completion callbacks are POSTed. Must be reachable
+      # from inside this container, so a service name rather than localhost.
+      TIMESTREAM_LOCAL_NOTIFICATION_URL: "${TIMESTREAM_LOCAL_NOTIFICATION_URL:-}"
+      # Object storage for UNLOAD. Unset means UNLOAD reports itself unsupported;
+      # the server runs fine without it.
+      TIMESTREAM_LOCAL_S3_ENDPOINT: "${TIMESTREAM_LOCAL_S3_ENDPOINT:-http://minio:9000}"
+      TIMESTREAM_LOCAL_S3_ACCESS_KEY_ID: "${TIMESTREAM_LOCAL_S3_ACCESS_KEY_ID:-minioadmin}"
+      TIMESTREAM_LOCAL_S3_SECRET_ACCESS_KEY: "${TIMESTREAM_LOCAL_S3_SECRET_ACCESS_KEY:-minioadmin}"
+    volumes:
+      - timestream-data:/data
+    healthcheck:
+      test:
+        - CMD
+        - ruby
+        - -rnet/http
+        - -e
+        - 'exit(Net::HTTP.get_response(URI("http://127.0.0.1:8080/health")).code == "200" ? 0 : 1)'
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # S3-compatible storage for UNLOAD. Swap for localstack or a real bucket by
+  # pointing TIMESTREAM_LOCAL_S3_ENDPOINT elsewhere; nothing here is minio specific.
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: "${TIMESTREAM_LOCAL_S3_ACCESS_KEY_ID:-minioadmin}"
+      MINIO_ROOT_PASSWORD: "${TIMESTREAM_LOCAL_S3_SECRET_ACCESS_KEY:-minioadmin}"
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  timestream-data:
+  minio-data:
