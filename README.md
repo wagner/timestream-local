@@ -12,7 +12,7 @@ them back. It is not feature complete and does not try to be.
 Published to GitHub Container Registry, and public — no login is needed to pull.
 
 ```sh
-docker pull ghcr.io/wagner/timestream-local:1.1.0
+docker pull ghcr.io/wagner/timestream-local:1.2.0
 ```
 
 In another app's `docker-compose.yml`:
@@ -20,7 +20,7 @@ In another app's `docker-compose.yml`:
 ```yaml
 services:
   timestream:
-    image: ghcr.io/wagner/timestream-local:1.1.0
+    image: ghcr.io/wagner/timestream-local:1.2.0
     ports: ["8080:8080"]
     environment:
       TIMESTREAM_LOCAL_ADVERTISED_ENDPOINT: "http://localhost:8080"
@@ -39,6 +39,11 @@ Open the server's address in a browser — `http://localhost:8080` — for a sma
 read-only view of the databases, their tables and columns, with a query box.
 Results render through the same code path clients read over the wire, so column
 types and TIMESERIES values look the way an SDK would see them.
+
+Registered scheduled queries are listed below the databases, each with the status
+of its last run. Opening one shows its schedule, the table it writes to, the query
+itself and what the last run did — how many rows it returned, how many records it
+ingested, and the failure reason when it failed.
 
 There is no login, because the server does not authenticate anything else either.
 That is fine on a laptop and wrong on a shared host: anyone who can reach the port
@@ -394,6 +399,23 @@ To run outside Docker:
 TIMESTREAM_LOCAL_DATA=./timestream.db bundle exec ruby bin/timestream-local
 ```
 
+### Verbose logging
+
+`--verbose` (or `TIMESTREAM_LOCAL_VERBOSE=true`, which is the one that works in a
+container) narrates what the server is doing on stdout: one line per request with
+the resource it touched and how long it took, one line per scheduled-query run,
+and — the useful one — the SQL that SQLite actually ran for each query:
+
+```
+[timestream-local] 14:22:53.485 WriteRecords database=metrics table=cpu records=1 ms=2
+[timestream-local] 14:22:53.486 sqlite sql="SELECT host, bin(time, 3600000000000) ..." binds="2026-08-30 17:22:53.000000000"
+[timestream-local] 14:22:53.486 Query sql="SELECT * FROM \"metrics\".\"cpu\"" rows=1 ms=1
+```
+
+That rewritten statement is what to read when a query returns fewer rows than it
+should: the Timestream original may be fine while the SQL it was translated into
+is asking something else.
+
 ### Configuration
 
 | Variable | Default | Purpose |
@@ -407,6 +429,7 @@ TIMESTREAM_LOCAL_DATA=./timestream.db bundle exec ruby bin/timestream-local
 | `TIMESTREAM_LOCAL_THREADS` | `8` | Puma thread ceiling |
 | `TIMESTREAM_LOCAL_NOTIFICATION_URL` | none | Where scheduled-query completion callbacks are POSTed |
 | `TIMESTREAM_LOCAL_LOG_REQUESTS` | `false` | Log every request when `true` |
+| `TIMESTREAM_LOCAL_VERBOSE` | `false` | Narrate requests, rewritten SQL and scheduled-query runs on stdout |
 | `TIMESTREAM_LOCAL_UI` | `true` | Serve the read-only browser at `/`; `false` disables it |
 | `TIMESTREAM_LOCAL_S3_ENDPOINT` | none | S3-compatible endpoint for `UNLOAD`; unset disables it |
 | `TIMESTREAM_LOCAL_S3_ACCESS_KEY_ID` | `minioadmin` | Object storage access key |

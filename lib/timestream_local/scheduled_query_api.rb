@@ -123,15 +123,21 @@ module TimestreamLocal
     def run(record, invocation_time)
       arn = record["arn"]
       started = now_monotonic
+      Log.event("scheduled_query.start", name: record["name"], arn: arn, invocation_time: invocation_time)
       begin
         columns, rows = execute_query(record, invocation_time)
         ingested = write_results(record, columns, rows)
         summary = run_summary(invocation_time, started, "AUTO_TRIGGER_SUCCESS",
                               ingested: ingested, result_rows: rows.size)
         @store.record_scheduled_query_run(arn, summary)
+        Log.event("scheduled_query.run", name: record["name"], status: "AUTO_TRIGGER_SUCCESS",
+                                         rows: rows.size, ingested: ingested,
+                                         ms: summary.dig("executionStats", "executionTimeInMillis"))
         notify(record, arn, SUCCESS, summary)
       rescue StandardError => e
         warn("[timestream-local] scheduled query #{arn} failed: #{e.class}: #{e.message}")
+        Log.event("scheduled_query.run", name: record["name"], status: "AUTO_TRIGGER_FAILURE",
+                                         error: e.class, message: e.message)
         summary = run_summary(invocation_time, started, "AUTO_TRIGGER_FAILURE",
                               ingested: 0, result_rows: 0).merge("failureReason" => e.message)
         @store.record_scheduled_query_run(arn, summary)
@@ -278,10 +284,13 @@ module TimestreamLocal
 
       request = Net::HTTP::Post.new(uri.request_uri, "content-type" => "application/json")
       request.body = JSON.dump(payload)
-      http.request(request)
+      response = http.request(request)
+      Log.event("notification", url: url, code: response.code)
+      response
     rescue StandardError => e
       # A receiver that is down must not turn a successful run into a failed one.
       warn("[timestream-local] notification POST to #{url} failed: #{e.class}: #{e.message}")
+      Log.event("notification", url: url, error: e.class, message: e.message)
     end
 
     def description(record)

@@ -3,6 +3,7 @@
 require "securerandom"
 
 require_relative "timestream_local/errors"
+require_relative "timestream_local/log"
 require_relative "timestream_local/types"
 require_relative "timestream_local/query/time_series"
 require_relative "timestream_local/query/functions"
@@ -18,7 +19,7 @@ require_relative "timestream_local/web_ui"
 require_relative "timestream_local/server"
 
 module TimestreamLocal
-  VERSION = "1.1.0"
+  VERSION = "1.2.0"
 
   module_function
 

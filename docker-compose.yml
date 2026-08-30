@@ -10,6 +10,9 @@ services:
       TIMESTREAM_LOCAL_ADVERTISED_ENDPOINT: "http://localhost:${TIMESTREAM_LOCAL_PORT:-8080}"
       TIMESTREAM_LOCAL_REGION: "${AWS_REGION:-us-east-1}"
       TIMESTREAM_LOCAL_DATA: /data/timestream.db
+      # Narrate requests, the SQL each query really ran, and scheduled-query runs
+      # into `docker-compose logs`. Off unless asked for.
+      TIMESTREAM_LOCAL_VERBOSE: "${TIMESTREAM_LOCAL_VERBOSE:-false}"
       # Where scheduled-query completion callbacks are POSTed. Must be reachable
       # from inside this container, so a service name rather than localhost.
       TIMESTREAM_LOCAL_NOTIFICATION_URL: "${TIMESTREAM_LOCAL_NOTIFICATION_URL:-}"

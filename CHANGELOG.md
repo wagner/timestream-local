@@ -9,6 +9,18 @@ a version heading; see [Releasing](README.md#releasing).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-30
+
+### Added
+
+- The browser at `GET /` lists registered scheduled queries with the status of
+  their last run, and shows one in detail: schedule, target table, query text,
+  and what the last run returned, ingested or failed with.
+- Verbose logging on stdout, off by default: `bin/timestream-local --verbose` or
+  `TIMESTREAM_LOCAL_VERBOSE=true`. One line per request, one per scheduled-query
+  run, and the rewritten SQL each query really ran — which is what to read when a
+  query comes back with fewer rows than it should.
+
 ## [1.1.0] - 2026-08-30
 
 ### Added
@@ -79,7 +91,8 @@ is the failure mode this project has to design against.
   have come from that column, so `to_iso8601(time) AS time` reported as
   `TIMESTAMP`.
 
-[Unreleased]: https://github.com/wagner/timestream-local/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/wagner/timestream-local/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/wagner/timestream-local/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/wagner/timestream-local/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/wagner/timestream-local/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/wagner/timestream-local/releases/tag/v1.0.0

@@ -105,6 +105,9 @@ module TimestreamLocal
       end
 
       sql = Query::TimestampLiterals.normalize(rewritten.sql, timestamp_columns(rewritten.tables))
+      # The statement SQLite actually runs. When a query comes back empty and
+      # the Timestream original looks right, this is the line that says why.
+      Log.event("sqlite", sql: sql, binds: (binds.join(", ") unless binds.empty?))
       columns, rows = @store.execute_sql(sql, binds)
       [columns, rows, resolve_types(columns, rows, rewritten.tables)]
     end

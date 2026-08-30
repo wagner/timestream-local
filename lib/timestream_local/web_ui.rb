@@ -36,8 +36,9 @@ module TimestreamLocal
       params = parse_params(env["QUERY_STRING"].to_s)
       sql = params["q"].to_s.strip
       selected = params["db"].to_s
+      arn = params["sq"].to_s
 
-      html(page(selected, sql))
+      html(page(selected, sql, arn))
     rescue StandardError => e
       # The browser is never the reason the server falls over.
       html(page_shell("Error", %(<div class="error"><strong>#{h(e.class)}</strong> #{h(e.message)}</div>)), 500)
@@ -47,19 +48,32 @@ module TimestreamLocal
 
     # ------------------------------------------------------------------- pages
 
-    def page(selected, sql)
+    def page(selected, sql, arn)
       databases = @store.list_databases
       selected = databases.first["DatabaseName"] if selected.empty? && databases.any?
+      scheduled = @store.list_scheduled_queries
 
       page_shell("timestream-local", <<~HTML)
         <div class="layout">
-          <aside>#{sidebar(databases, selected)}</aside>
+          <aside>
+            #{sidebar(databases, selected)}
+            #{scheduled_sidebar(scheduled, selected, arn)}
+          </aside>
           <main>
             #{query_form(sql)}
-            #{sql.empty? ? welcome(databases) : results(sql)}
+            #{main_panel(databases, scheduled, sql, arn)}
           </main>
         </div>
       HTML
+    end
+
+    # A named scheduled query wins over the query box: the form submits `q`
+    # alone, so typing a query is what leaves the detail view.
+    def main_panel(databases, scheduled, sql, arn)
+      return scheduled_query(scheduled, arn) unless arn.empty?
+      return welcome(databases) if sql.empty?
+
+      results(sql)
     end
 
     def sidebar(databases, selected)
@@ -96,6 +110,97 @@ module TimestreamLocal
         HTML
       end
       "<ul class=\"tables\">#{items.join}</ul>"
+    end
+
+    # Hidden entirely when nothing is registered: most users of this server
+    # never create a scheduled query, and an empty heading is just furniture.
+    def scheduled_sidebar(scheduled, selected, arn)
+      return "" if scheduled.empty?
+
+      items = scheduled.map do |record|
+        current = record["arn"] == arn
+        <<~HTML
+          <li#{current ? ' class="current"' : ''}>
+            <a href="#{h(link(db: selected, sq: record['arn']))}">#{h(record['name'])}</a>
+            #{run_badge(record['last_run'])}
+          </li>
+        HTML
+      end
+
+      %(<h2>Scheduled queries</h2><ul class="sq">#{items.join}</ul>)
+    end
+
+    # There is no scheduler here -- runs happen only when ExecuteScheduledQuery
+    # asks for one -- so the schedule expression is shown as the registered
+    # string it is, and the last run is what actually says anything.
+    def scheduled_query(scheduled, arn)
+      record = scheduled.find { |candidate| candidate["arn"] == arn }
+      unless record
+        return %(<div class="error"><strong>ResourceNotFoundException</strong> ) +
+               %(No scheduled query #{h(arn)}.</div>)
+      end
+
+      <<~HTML
+        <section class="detail">
+          <h2>#{h(record['name'])} #{run_badge(record['last_run'])}</h2>
+          <dl>#{definitions(scheduled_query_facts(record))}</dl>
+          <h3>Query</h3>
+          <pre>#{h(record['query_string'])}</pre>
+          #{last_run(record['last_run'])}
+        </section>
+      HTML
+    end
+
+    def scheduled_query_facts(record)
+      {
+        "Schedule" => h(record.dig("schedule", "ScheduleExpression")),
+        "Writes to" => target_link(record),
+        "Notifies" => h(record.dig("notification", "SnsConfiguration", "TopicArn")),
+        "State" => h(record["state"]),
+        "Created" => h(format_time(record["created_at"])),
+        "ARN" => %(<span class="arn">#{h(record['arn'])}</span>)
+      }
+    end
+
+    def target_link(record)
+      configuration = record.dig("target", "TimestreamConfiguration") or return nil
+
+      database_name = configuration["DatabaseName"]
+      table_name = configuration["TableName"]
+      reference = "#{database_name}.#{table_name}"
+      %(<a href="#{h(link(db: database_name, q: select_all(database_name, table_name)))}">#{h(reference)}</a>)
+    end
+
+    def last_run(run)
+      return %(<p class="empty">Not run yet. Trigger it with ExecuteScheduledQuery.</p>) if run.nil?
+
+      stats = run["executionStats"] || {}
+      facts = {
+        "Status" => h(run["run_status"]),
+        "Invocation" => h(format_time(run["invocation_time"])),
+        "Triggered" => h(format_time(run["triggerTimeMillis"] && run["triggerTimeMillis"] / 1000.0)),
+        "Took" => stats["executionTimeInMillis"] && "#{h(stats['executionTimeInMillis'])} ms",
+        "Result rows" => h(stats["queryResultRows"]),
+        "Records ingested" => h(stats["recordsIngested"]),
+        "Failure" => run["failureReason"] && %(<span class="failed">#{h(run['failureReason'])}</span>)
+      }
+      %(<h3>Last run</h3><dl>#{definitions(facts)}</dl>)
+    end
+
+    def run_badge(run)
+      return %(<span class="badge">never run</span>) if run.nil?
+
+      failed = run["run_status"].to_s.end_with?("FAILURE")
+      %(<span class="badge #{failed ? 'failed' : 'ok'}">#{failed ? 'failed' : 'ok'}</span>)
+    end
+
+    # Values are pre-escaped by their builders, since some of them are links.
+    def definitions(facts)
+      facts.filter_map do |label, value|
+        next if value.nil? || value.to_s.empty?
+
+        "<dt>#{h(label)}</dt><dd>#{value}</dd>"
+      end.join
     end
 
     def query_form(sql)
@@ -185,8 +290,14 @@ module TimestreamLocal
       %(SELECT * FROM "#{database_name}"."#{table_name}" LIMIT 50)
     end
 
-    def link(db: nil, q: nil)
-      pairs = { "db" => db, "q" => q }.compact.reject { |_, v| v.to_s.empty? }
+    def format_time(epoch)
+      return nil if epoch.nil?
+
+      Time.at(epoch.to_f).utc.strftime("%Y-%m-%d %H:%M:%S UTC")
+    end
+
+    def link(db: nil, q: nil, sq: nil)
+      pairs = { "db" => db, "q" => q, "sq" => sq }.compact.reject { |_, v| v.to_s.empty? }
       pairs.empty? ? "/" : "/?#{pairs.map { |k, v| "#{k}=#{CGI.escape(v)}" }.join('&')}"
     end
 
@@ -257,6 +368,34 @@ module TimestreamLocal
       ul.tables a { color: var(--ink); text-decoration: none; overflow-wrap: anywhere; }
       ul.tables a:hover { color: var(--accent); text-decoration: underline; }
       a.schema { color: var(--muted); font-size: 11px; flex: none; }
+      ul.sq { list-style: none; margin: 6px 0 0; padding: 0; }
+      ul.sq li { display: flex; justify-content: space-between; align-items: baseline;
+        gap: 8px; padding: 2px 0; }
+      ul.sq a { color: var(--ink); text-decoration: none; overflow-wrap: anywhere; }
+      ul.sq a:hover { color: var(--accent); text-decoration: underline; }
+      ul.sq li.current a { color: var(--accent); font-weight: 500; }
+      aside h2 + ul.sq { margin-top: 0; }
+      .badge { font-size: 10px; color: var(--muted); border: 1px solid var(--line);
+        border-radius: 999px; padding: 0 6px; flex: none; }
+      .badge.ok { color: var(--accent); border-color: var(--accent); }
+      .badge.failed, .failed { color: var(--error); }
+      .badge.failed { border-color: var(--error); }
+      .detail { background: var(--panel); border: 1px solid var(--line);
+        border-radius: 8px; padding: 16px; }
+      .detail h2 { font-size: 15px; margin: 0 0 12px; display: flex; align-items: baseline; gap: 8px; }
+      .detail h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+        color: var(--muted); margin: 16px 0 6px; }
+      .detail dl { display: grid; grid-template-columns: max-content 1fr;
+        gap: 4px 16px; margin: 0; }
+      .detail dt { color: var(--muted); font-size: 12px; }
+      .detail dd { margin: 0; overflow-wrap: anywhere; }
+      .detail dd a { color: var(--accent); }
+      .detail .arn { font-size: 12px; color: var(--muted); }
+      .detail dd .failed { display: block; white-space: pre-wrap;
+        font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .detail pre { margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: 8px;
+        background: var(--bg); overflow-x: auto; white-space: pre-wrap;
+        font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
       form.query { margin-bottom: 16px; }
       textarea {
         width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 8px;

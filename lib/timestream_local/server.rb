@@ -79,14 +79,38 @@ module TimestreamLocal
 
       @log_mutex.synchronize { @operation_log << operation }
       params = parse_body(env)
-      json(200, dispatch(operation, params))
+      started = Log.now
+      result = dispatch(operation, params)
+      Log.event(operation, **verbose_fields(params), rows: result["Rows"]&.size, ms: Log.elapsed_ms(started))
+      json(200, result)
     rescue ApiError => e
+      log_failure(operation, e.code, e.message)
       error_response(e)
     rescue JSON::ParserError => e
-      error_response(ValidationException.new("Malformed request body: #{e.message}"))
+      error = ValidationException.new("Malformed request body: #{e.message}")
+      log_failure(operation, error.code, error.message)
+      error_response(error)
     rescue StandardError => e
       warn("[timestream-local] #{e.class}: #{e.message}\n  #{e.backtrace&.first(5)&.join("\n  ")}")
+      log_failure(operation, e.class, e.message)
       error_response(InternalServerException.new(e.message))
+    end
+
+    # What is worth seeing about a request in verbose mode: which resource it
+    # touched and how much of it. The rest of a request body is configuration
+    # the response echoes back anyway.
+    def verbose_fields(params)
+      return {} unless Log.enabled?
+
+      {
+        database: params["DatabaseName"], table: params["TableName"],
+        records: (params["Records"].size if params["Records"].is_a?(Array)),
+        sql: params["QueryString"], arn: params["ScheduledQueryArn"]
+      }
+    end
+
+    def log_failure(operation, code, message)
+      Log.event(operation || "UnknownOperation", error: code, message: message)
     end
 
     def dispatch(operation, params)

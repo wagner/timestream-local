@@ -11,6 +11,12 @@ host = ENV.fetch("TIMESTREAM_LOCAL_HOST", "0.0.0.0")
 port = Integer(ENV.fetch("TIMESTREAM_LOCAL_PORT", "8080"))
 data = ENV.fetch("TIMESTREAM_LOCAL_DATA", "/data/timestream.db")
 
+# Verbose mode narrates every request, the SQL each query really ran, and every
+# scheduled-query run, on stdout. TIMESTREAM_LOCAL_VERBOSE=true is the same
+# switch for containers, where there is nowhere to type a flag.
+verbose = ARGV.include?("--verbose") || ARGV.include?("-v")
+TimestreamLocal::Log.enabled = true if verbose
+
 # The address DescribeEndpoints hands back has to be reachable from the client,
 # not from inside the container -- so it is configured separately from the bind.
 TimestreamLocal::Server.advertised_address =
@@ -22,9 +28,10 @@ configuration = Puma::Configuration.new do |config|
   config.bind("tcp://#{host}:#{port}")
   config.app(app)
   config.threads(1, Integer(ENV.fetch("TIMESTREAM_LOCAL_THREADS", "8")))
-  config.log_requests(ENV["TIMESTREAM_LOCAL_LOG_REQUESTS"] == "true")
+  config.log_requests(verbose || ENV["TIMESTREAM_LOCAL_LOG_REQUESTS"] == "true")
   config.environment("production")
 end
 
 warn "timestream-local #{TimestreamLocal::VERSION} listening on http://#{host}:#{port} (data: #{data})"
+warn "verbose logging on" if TimestreamLocal::Log.enabled?
 Puma::Launcher.new(configuration).run

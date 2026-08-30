@@ -113,6 +113,81 @@ class WebUiTest < TimestreamTest
     end
   end
 
+  # A cron that never fires; runs happen only through ExecuteScheduledQuery.
+  NEVER = "cron(0 0 1 1 ? 2100)"
+
+  def create_scheduled_query(database_name, table_name, name)
+    query_client.create_scheduled_query(
+      name: name,
+      query_string: %(SELECT host, cpu, time FROM "#{database_name}"."#{table_name}"),
+      schedule_configuration: { schedule_expression: NEVER },
+      notification_configuration: { sns_configuration: { topic_arn: "arn:aws:sns:us-east-1:000000000000:t" } },
+      target_configuration: {
+        timestream_configuration: {
+          database_name: database_name, table_name: table_name, time_column: "time",
+          dimension_mappings: [{ name: "host", dimension_value_type: "VARCHAR" }],
+          multi_measure_mappings: {
+            target_multi_measure_name: "m",
+            multi_measure_attribute_mappings: [{ source_column: "cpu", measure_value_type: "DOUBLE" }]
+          }
+        }
+      },
+      scheduled_query_execution_role_arn: "arn:aws:iam::000000000000:role/timestream-local",
+      error_report_configuration: { s3_configuration: { bucket_name: "errors" } }
+    ).arn
+  end
+
+  def test_lists_scheduled_queries_and_shows_one
+    with_table do |database_name, table_name|
+      name = unique("sq")
+      arn = create_scheduled_query(database_name, table_name, name)
+
+      assert_includes get("/").body, name
+
+      body = get("/", sq: arn).body
+      assert_includes body, CGI.escapeHTML(NEVER)
+      assert_includes body, "#{database_name}.#{table_name}"
+      # Never triggered, so there is no run to report yet.
+      assert_includes body, "never run"
+      assert_includes body, CGI.escapeHTML(%(FROM "#{database_name}"."#{table_name}"))
+    ensure
+      query_client.delete_scheduled_query(scheduled_query_arn: arn) if arn
+    end
+  end
+
+  def test_the_last_run_of_a_scheduled_query_is_shown
+    with_table do |database_name, table_name|
+      seed(database_name, table_name)
+      arn = create_scheduled_query(database_name, table_name, unique("sq"))
+      query_client.execute_scheduled_query(scheduled_query_arn: arn, invocation_time: AT)
+
+      # The run is asynchronous, so the page is polled rather than assumed.
+      body = nil
+      deadline = Time.now + 15
+      loop do
+        body = get("/", sq: arn).body
+        break if body.include?("AUTO_TRIGGER_SUCCESS")
+        flunk("timed out waiting for the run to be reported") if Time.now > deadline
+
+        sleep 0.05
+      end
+
+      assert_includes body, "Last run"
+      assert_includes body, "2026-08-30 12:00:00 UTC"
+      assert_includes body, ">2<" # two result rows, both ingested
+    ensure
+      query_client.delete_scheduled_query(scheduled_query_arn: arn) if arn
+    end
+  end
+
+  # A stale link is a normal thing to follow; it must not 500.
+  def test_an_unknown_scheduled_query_renders_the_error
+    response = get("/", sq: "arn:aws:timestream:us-east-1:000000000000:scheduled-query/nope-0000")
+
+    assert_equal "200", response.code
+    assert_includes response.body, "ResourceNotFoundException"
+  end
+
   def test_the_rpc_surface_is_unaffected
     # The browser is on GET; POST / is still the API.
     assert write_client.list_databases.databases
