@@ -9,6 +9,8 @@ a version heading; see [Releasing](README.md#releasing).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-30
+
 ### Added
 
 - A read-only browser at `GET /`: databases, their tables and columns, and a
@@ -77,6 +79,7 @@ is the failure mode this project has to design against.
   have come from that column, so `to_iso8601(time) AS time` reported as
   `TIMESTAMP`.
 
-[Unreleased]: https://github.com/wagner/timestream-local/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/wagner/timestream-local/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/wagner/timestream-local/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/wagner/timestream-local/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/wagner/timestream-local/releases/tag/v1.0.0

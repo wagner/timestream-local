@@ -12,7 +12,7 @@ them back. It is not feature complete and does not try to be.
 Published to GitHub Container Registry, and public — no login is needed to pull.
 
 ```sh
-docker pull ghcr.io/wagner/timestream-local:1.0.1
+docker pull ghcr.io/wagner/timestream-local:1.1.0
 ```
 
 In another app's `docker-compose.yml`:
@@ -20,7 +20,7 @@ In another app's `docker-compose.yml`:
 ```yaml
 services:
   timestream:
-    image: ghcr.io/wagner/timestream-local:1.0.1
+    image: ghcr.io/wagner/timestream-local:1.1.0
     ports: ["8080:8080"]
     environment:
       TIMESTREAM_LOCAL_ADVERTISED_ENDPOINT: "http://localhost:8080"
@@ -29,7 +29,7 @@ services:
 ```
 
 Each release publishes three tags — the full version, the minor series and the
-major series (`1.0.1`, `1.0`, `1`). Pin the full version anywhere reproducibility
+major series (`1.1.0`, `1.1`, `1`). Pin the full version anywhere reproducibility
 matters; the two shorter tags move forward as releases are cut. Images are
 published for `linux/amd64` and `linux/arm64`.
 
