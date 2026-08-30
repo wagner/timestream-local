@@ -34,7 +34,10 @@ jobs:
       - name: Check the tag matches VERSION
         run: |
           tag="${{ github.event.inputs.tag || github.ref_name }}"
-          version="v$(ruby -e 'require "./lib/timestream_local"; print TimestreamLocal::VERSION')"
+          # Read the constant out of the file rather than loading the library,
+          # which would need the gems and can fail for reasons unrelated to the
+          # version.
+          version="v$(ruby -e 'print File.read("lib/timestream_local.rb")[/VERSION = "([^"]+)"/, 1]')"
           echo "tag=$tag version=$version"
           if [ "$tag" != "$version" ]; then
             echo "::error::Tag $tag does not match VERSION $version in lib/timestream_local.rb"
