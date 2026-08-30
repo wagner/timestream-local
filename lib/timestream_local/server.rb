@@ -81,7 +81,9 @@ module TimestreamLocal
       params = parse_body(env)
       started = Log.now
       result = dispatch(operation, params)
-      Log.event(operation, **verbose_fields(params), rows: result["Rows"]&.size, ms: Log.elapsed_ms(started))
+      Log.event(operation, **verbose_fields(params), rows: result["Rows"]&.size,
+                scanned: result.dig("QueryStatus", "CumulativeBytesScanned"),
+                ms: Log.elapsed_ms(started))
       json(200, result)
     rescue ApiError => e
       log_failure(operation, e.code, e.message)

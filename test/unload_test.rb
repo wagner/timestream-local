@@ -148,6 +148,8 @@ class UnloadTest < TimestreamTest
       assert_equal 1, manifest["result_files"].size
       assert_match(%r{\As3://#{BUCKET}/#{PREFIX}/}, manifest["result_files"].first["url"])
       assert_equal 3, manifest["result_files"].first.dig("file_metadata", "row_count")
+      assert_operator manifest["query_metadata"]["content_length_in_bytes"], :>, 0
+      assert_operator manifest["query_metadata"]["total_bytes_scanned"], :>, 0
 
       body = result_bodies(manifest).first
       assert_equal ["2026-04-28T18:12:07.000000000,pay_0,1.0",

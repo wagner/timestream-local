@@ -24,8 +24,11 @@ module TimestreamLocal
       max_rows = validate_max_rows(params["MaxRows"])
       offset = decode_token(params["NextToken"], query_string)
 
-      columns, rows, types = run(query_string)
+      columns, rows, types, scanned = run(query_string)
       page, next_offset = paginate(rows, offset, max_rows)
+      # Scanned covers the whole result, not the page: the real service reports
+      # what the query read, which pagination does not change.
+      scanned ||= Metering.scanned_bytes(rows)
 
       response = {
         "QueryId" => SecureRandom.hex(16),
@@ -33,8 +36,8 @@ module TimestreamLocal
         "Rows" => page.map { |row| serialize_row(row, columns, types) },
         "QueryStatus" => {
           "ProgressPercentage" => 100.0,
-          "CumulativeBytesScanned" => 0,
-          "CumulativeBytesMetered" => 0
+          "CumulativeBytesScanned" => scanned,
+          "CumulativeBytesMetered" => Metering.metered_bytes(scanned)
         }
       }
       response["NextToken"] = encode_token(query_string, next_offset) if next_offset
@@ -90,8 +93,10 @@ module TimestreamLocal
       end
 
       unload = Query::Unload.parse(statement)
-      columns, rows, types = run_select(unload.query)
-      Query::Unload.new(unload).call(columns, rows, types)
+      columns, rows, types, scanned = run_select(unload.query)
+      # The summary row is three fields wide; what was scanned is the query
+      # inside the UNLOAD, not the receipt it hands back.
+      Query::Unload.new(unload).call(columns, rows, types) + [scanned]
     end
 
     def run_select(statement, binds = [])
@@ -109,7 +114,7 @@ module TimestreamLocal
       # the Timestream original looks right, this is the line that says why.
       Log.event("sqlite", sql: sql, binds: (binds.join(", ") unless binds.empty?))
       columns, rows = @store.execute_sql(sql, binds)
-      [columns, rows, resolve_types(columns, rows, rewritten.tables)]
+      [columns, rows, resolve_types(columns, rows, rewritten.tables), Metering.scanned_bytes(rows)]
     end
 
     # `time` is a timestamp in every Timestream table; TIMESTAMP measures are

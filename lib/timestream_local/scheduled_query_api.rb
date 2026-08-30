@@ -125,13 +125,14 @@ module TimestreamLocal
       started = now_monotonic
       Log.event("scheduled_query.start", name: record["name"], arn: arn, invocation_time: invocation_time)
       begin
-        columns, rows = execute_query(record, invocation_time)
-        ingested = write_results(record, columns, rows)
+        columns, rows, _types, scanned = execute_query(record, invocation_time)
+        ingested, written = write_results(record, columns, rows)
         summary = run_summary(invocation_time, started, "AUTO_TRIGGER_SUCCESS",
-                              ingested: ingested, result_rows: rows.size)
+                              ingested: ingested, result_rows: rows.size,
+                              scanned: scanned, written: written)
         @store.record_scheduled_query_run(arn, summary)
         Log.event("scheduled_query.run", name: record["name"], status: "AUTO_TRIGGER_SUCCESS",
-                                         rows: rows.size, ingested: ingested,
+                                         rows: rows.size, ingested: ingested, bytes: written,
                                          ms: summary.dig("executionStats", "executionTimeInMillis"))
         notify(record, arn, SUCCESS, summary)
       rescue StandardError => e
@@ -156,20 +157,22 @@ module TimestreamLocal
       @query_api.execute_statement(query_string, binds)
     end
 
+    # Returns what was ingested, as a count and as approximate bytes: the run
+    # summary reports both, and they are not the same field.
     def write_results(record, columns, rows)
       target = record.dig("target", "TimestreamConfiguration")
-      return 0 if target.nil?
+      return [0, 0] if target.nil?
 
       index = columns.each_with_index.to_h
       records = rows.filter_map { |row| build_record(target, index, row, columns) }
-      return 0 if records.empty?
+      return [0, 0] if records.empty?
 
       records.each_slice(MAX_RECORDS_PER_REQUEST) do |batch|
         @write_api.write_records(
           "DatabaseName" => target["DatabaseName"], "TableName" => target["TableName"], "Records" => batch
         )
       end
-      records.size
+      [records.size, Metering.written_bytes(records)]
     end
 
     # Result columns not named in the mappings are dropped, as they are by the
@@ -238,7 +241,9 @@ module TimestreamLocal
       end
     end
 
-    def run_summary(invocation_time, started, status, ingested:, result_rows:)
+    # `scanned` is nil for a run that never got as far as reading anything, and
+    # nothing read meters nothing -- the floor applies to queries that ran.
+    def run_summary(invocation_time, started, status, ingested:, result_rows:, scanned: nil, written: 0)
       elapsed = ((now_monotonic - started) * 1000).round
       {
         "invocation_time" => invocation_time,
@@ -248,8 +253,8 @@ module TimestreamLocal
         "runStatus" => status,
         "executionStats" => {
           "executionTimeInMillis" => elapsed,
-          "dataWrites" => ingested,
-          "bytesMetered" => 0,
+          "dataWrites" => written,
+          "bytesMetered" => scanned.nil? ? 0 : Metering.metered_bytes(scanned),
           "recordsIngested" => ingested,
           "queryResultRows" => result_rows
         }

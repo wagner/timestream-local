@@ -9,6 +9,18 @@ a version heading; see [Releasing](README.md#releasing).
 
 ## [Unreleased]
 
+### Changed
+
+- Metering fields carry approximations instead of zeros: `CumulativeBytesScanned`
+  and `CumulativeBytesMetered` on a query, `BytesMetered` and `DataWrites` on a
+  scheduled-query run, and `total_bytes_scanned` in an UNLOAD manifest. Values
+  are charged at the size they occupy here plus a per-row overhead, and the
+  metered figure keeps the real service's 10 MB floor. An aggregate under-reports,
+  since only the rows it returned are counted — see [Metering](README.md#metering).
+- A scheduled run's `DataWrites` is now approximate bytes written rather than a
+  copy of `RecordsIngested`, which is what the field means in the real service.
+  A consumer asserting `data_writes == records_ingested` will see them differ.
+
 ## [1.2.0] - 2026-08-30
 
 ### Added

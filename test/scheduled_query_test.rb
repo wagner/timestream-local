@@ -177,6 +177,11 @@ class ScheduledQueryTest < TimestreamTest
       assert_equal BASE_TIME, summary.invocation_time
       assert_equal 2, summary.execution_stats.records_ingested
       assert_equal 2, summary.execution_stats.query_result_rows
+      # Approximated metering: bytes written are bytes, not the record count,
+      # and a run that read anything is metered at least the floor.
+      assert_operator summary.execution_stats.data_writes, :>, 2
+      assert_equal TimestreamLocal::Metering::MINIMUM_METERED_BYTES,
+                   summary.execution_stats.bytes_metered
     end
   end
 

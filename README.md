@@ -329,12 +329,40 @@ the `InvocationTime` that was passed in, unchanged, so a receiver matching runs 
 that value recognises it. The failure path sends `MANUAL_TRIGGER_FAILURE` with no
 run summary.
 
+## Metering
+
+`CumulativeBytesScanned`, `CumulativeBytesMetered`, the scheduled-query
+`ExecutionStats`, and an UNLOAD manifest's `total_bytes_scanned` carry
+approximations rather than zeros. There is no scan accounting in SQLite to take a
+real figure from, so the model is: every value in a row is charged at the size it
+occupies here, plus a fixed per-row overhead; the metered figure keeps the
+floor a real query is charged (`Metering::MINIMUM_METERED_BYTES`, 10 MB), so a
+cheap query is not free.
+
+Two consequences, both worth knowing before asserting on the numbers:
+
+- **An aggregate under-reports.** `count(*)` over a million rows scans all of
+  them and returns one, and one row is what gets counted here.
+- **They are a plausible shape, not a cost estimate.** Good for a consumer that
+  reads, logs or asserts on the field; useless for predicting a bill.
+
+What they buy over the zeros they replace is that the fields move: a wider result
+meters more than a narrow one, more rows meter more than fewer, and paging does
+not change what the query read — every page reports the whole scan, as the real
+service does.
+
+`WriteRecords` has no byte field in its response, so nothing is approximated
+there; `RecordsIngested` is a real count. A scheduled run's `DataWrites` is bytes
+written, and `RecordsIngested` the count of records — they are different fields
+and no longer the same number.
+
 ## Deliberate differences from the real service
 
 - Writes are immediately readable. Timestream is eventually consistent.
 - Retention periods are stored and returned but never enforced; nothing expires.
 - Everything counts as memory store — `RecordsIngested.magnetic_store` is always 0.
-- No throttling, no quotas, no metering. `CumulativeBytesScanned` is always 0.
+- No throttling and no quotas. Metering figures are approximated rather than
+  metered — see [Metering](#metering).
 - Requests are not authenticated.
 - A result column's type comes from the catalog only when its values are
   consistent with it, so an expression aliased over a real column's name

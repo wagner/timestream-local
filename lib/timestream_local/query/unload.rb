@@ -103,11 +103,12 @@ module TimestreamLocal
         base = [@statement.prefix, query_id].reject { |part| part.nil? || part.empty? }.join("/")
 
         files = write_results(store, base, columns, rows, types)
+        scanned = Metering.scanned_bytes(rows)
         metadata = store.put(@statement.bucket, "#{base}/metadata.json",
                              JSON.pretty_generate(metadata_document(columns, types)),
                              content_type: "application/json")
         manifest = store.put(@statement.bucket, "#{base}/manifest.json",
-                             JSON.pretty_generate(manifest_document(files)),
+                             JSON.pretty_generate(manifest_document(files, scanned)),
                              content_type: "application/json")
 
         [COLUMNS, [[rows.size, metadata, manifest]], COLUMN_TYPES]
@@ -190,7 +191,7 @@ module TimestreamLocal
         io.string
       end
 
-      def manifest_document(files)
+      def manifest_document(files, scanned)
         {
           "result_files" => files.map do |file|
             {
@@ -200,7 +201,7 @@ module TimestreamLocal
           end,
           "query_metadata" => {
             "content_length_in_bytes" => files.sum { |file| file[:bytes] },
-            "total_bytes_scanned" => 0,
+            "total_bytes_scanned" => scanned,
             "result_format" => "CSV"
           },
           "author" => { "name" => "timestream-local", "manifest_file_version" => "1.0" }
