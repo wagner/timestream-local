@@ -322,7 +322,11 @@ module TimestreamLocal
         <title>#{h(title)}</title>
         <style>#{STYLE}</style>
         </head><body>
-        <header><a href="/">timestream-local</a> <span class="version">#{h(TimestreamLocal::VERSION)}</span></header>
+        <header>
+          <a href="/">timestream-local</a>
+          <span class="version">#{h(TimestreamLocal::VERSION)}</span>
+          <span class="status" role="status">timestream-local is online</span>
+        </header>
         #{content}
         </body></html>
       HTML
@@ -350,6 +354,13 @@ module TimestreamLocal
       }
       header a { color: var(--ink); text-decoration: none; font-weight: 600; }
       .version { color: var(--muted); font-size: 12px; }
+      .status {
+        margin-left: auto; color: var(--accent); font-size: 12px;
+        display: flex; align-items: center; gap: 6px;
+      }
+      .status::before {
+        content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+      }
       .layout { display: flex; align-items: flex-start; gap: 20px; padding: 20px; }
       aside {
         flex: 0 0 240px; background: var(--panel); border: 1px solid var(--line);

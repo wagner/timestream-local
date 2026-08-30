@@ -36,6 +36,9 @@ class WebUiTest < TimestreamTest
     assert_equal "200", response.code
     assert_match(%r{text/html}, response["content-type"])
     assert_match(/timestream-local/, response.body)
+    # Opening the server's address answers the question it is usually opened to
+    # answer: is this thing running?
+    assert_includes response.body, "timestream-local is online"
   end
 
   def test_lists_databases_and_the_tables_of_the_selected_one

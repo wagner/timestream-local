@@ -1,0 +1,33 @@
+{
+  // Run with: Terminal > Run Task, or ⇧⌘P "Tasks: Run Task".
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start timestream-local",
+      "detail": "Boots the server in a terminal here — no container, no compose. Ctrl-C stops it.",
+      "type": "shell",
+      "command": "bundle exec ruby bin/timestream-local --verbose",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          // The default is /data/timestream.db, which is the path inside the
+          // container. Outside one it has to be a path that exists; *.db is
+          // gitignored, so this file stays out of the way.
+          "TIMESTREAM_LOCAL_DATA": "${workspaceFolder}/timestream.db"
+        }
+      },
+      // The server runs until stopped, so there is nothing to wait for and no
+      // output to parse for problems -- the verbose log is the point.
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      }
+    }
+  ]
+}

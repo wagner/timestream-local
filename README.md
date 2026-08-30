@@ -12,7 +12,7 @@ them back. It is not feature complete and does not try to be.
 Published to GitHub Container Registry, and public — no login is needed to pull.
 
 ```sh
-docker pull ghcr.io/wagner/timestream-local:1.2.0
+docker pull ghcr.io/wagner/timestream-local:1.3.0
 ```
 
 In another app's `docker-compose.yml`:
@@ -20,7 +20,7 @@ In another app's `docker-compose.yml`:
 ```yaml
 services:
   timestream:
-    image: ghcr.io/wagner/timestream-local:1.2.0
+    image: ghcr.io/wagner/timestream-local:1.3.0
     ports: ["8080:8080"]
     environment:
       TIMESTREAM_LOCAL_ADVERTISED_ENDPOINT: "http://localhost:8080"
@@ -426,6 +426,9 @@ To run outside Docker:
 ```sh
 TIMESTREAM_LOCAL_DATA=./timestream.db bundle exec ruby bin/timestream-local
 ```
+
+In VS Code that is the **Start timestream-local** task (Terminal → Run Task),
+which runs the same command with `--verbose` in a dedicated terminal.
 
 ### Verbose logging
 

@@ -9,6 +9,15 @@ a version heading; see [Releasing](README.md#releasing).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-08-30
+
+### Added
+
+- The startup banner prints the browser's URL, with `0.0.0.0` shown as
+  `localhost` so it can be followed, or says the browser is disabled.
+- The browser's header says `timestream-local is online`, so opening the
+  server's address answers the question it is usually opened to answer.
+
 ### Changed
 
 - Metering fields carry approximations instead of zeros: `CumulativeBytesScanned`
@@ -103,7 +112,8 @@ is the failure mode this project has to design against.
   have come from that column, so `to_iso8601(time) AS time` reported as
   `TIMESTAMP`.
 
-[Unreleased]: https://github.com/wagner/timestream-local/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/wagner/timestream-local/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/wagner/timestream-local/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/wagner/timestream-local/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/wagner/timestream-local/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/wagner/timestream-local/compare/v1.0.0...v1.0.1

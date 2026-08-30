@@ -20,7 +20,7 @@ require_relative "timestream_local/web_ui"
 require_relative "timestream_local/server"
 
 module TimestreamLocal
-  VERSION = "1.2.0"
+  VERSION = "1.3.0"
 
   module_function
 

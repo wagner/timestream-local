@@ -33,5 +33,12 @@ configuration = Puma::Configuration.new do |config|
 end
 
 warn "timestream-local #{TimestreamLocal::VERSION} listening on http://#{host}:#{port} (data: #{data})"
+# 0.0.0.0 is a bind address, not somewhere a browser can go.
+browsable = %w[0.0.0.0 :: [::]].include?(host) ? "localhost" : host
+if TimestreamLocal::WebUi.enabled?
+  warn "browser at http://#{browsable}:#{port}"
+else
+  warn "browser disabled (TIMESTREAM_LOCAL_UI=false)"
+end
 warn "verbose logging on" if TimestreamLocal::Log.enabled?
 Puma::Launcher.new(configuration).run
