@@ -44,6 +44,7 @@ module TimestreamLocal
       @write_api = WriteApi.new(store)
       @query_api = QueryApi.new(store)
       @scheduled_query_api = ScheduledQueryApi.new(store, @write_api, @query_api)
+      @web_ui = WebUi.new(store, @query_api)
       @operation_log = []
       @log_mutex = Mutex.new
     end
@@ -54,7 +55,9 @@ module TimestreamLocal
 
       # /__operations records which RPCs the SDK actually issued -- it is how
       # the test suite asserts that no DescribeEndpoints call was made.
-      if method == "GET" && path == "/health"
+      if method == "GET" && path == "/" && WebUi.enabled?
+        @web_ui.call(env)
+      elsif method == "GET" && path == "/health"
         text(200, "ok")
       elsif method == "GET" && path == "/__operations"
         json(200, @log_mutex.synchronize { @operation_log.dup })

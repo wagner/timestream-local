@@ -33,6 +33,18 @@ major series (`1.0.1`, `1.0`, `1`). Pin the full version anywhere reproducibilit
 matters; the two shorter tags move forward as releases are cut. Images are
 published for `linux/amd64` and `linux/arm64`.
 
+## Browsing what is in it
+
+Open the server's address in a browser — `http://localhost:8080` — for a small
+read-only view of the databases, their tables and columns, with a query box.
+Results render through the same code path clients read over the wire, so column
+types and TIMESERIES values look the way an SDK would see them.
+
+There is no login, because the server does not authenticate anything else either.
+That is fine on a laptop and wrong on a shared host: anyone who can reach the port
+can read everything in it. Set `TIMESTREAM_LOCAL_UI=false` to turn it off, or do
+not publish the port.
+
 ## Quick start
 
 ```sh
@@ -336,10 +348,13 @@ run summary.
 
 ## Releasing
 
-The version lives in `lib/timestream_local.rb`. Tagging is what publishes: the
-`release` workflow runs the suite, refuses to continue if the tag and that
-constant disagree, then builds and pushes to ghcr.io and smoke tests what it
-pushed.
+The version lives in `lib/timestream_local.rb`, and changes are logged under
+`## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md) as they land. Releasing moves
+that section under a version heading.
+
+Tagging is what publishes: the `release` workflow runs the suite, refuses to
+continue if the tag and the `VERSION` constant disagree, then builds and pushes to
+ghcr.io and smoke tests what it pushed.
 
 ```sh
 # bump VERSION in lib/timestream_local.rb, commit, then tag it to match:
@@ -349,6 +364,9 @@ git push origin --tags
 
 Builds are frozen against the committed `Gemfile.lock`, so rebuilding a tag
 installs the same gem versions it did originally.
+
+A release moves the `X.Y` and `X` tags onto the new version; pin the full version
+anywhere that matters.
 
 ## Development
 
@@ -389,6 +407,7 @@ TIMESTREAM_LOCAL_DATA=./timestream.db bundle exec ruby bin/timestream-local
 | `TIMESTREAM_LOCAL_THREADS` | `8` | Puma thread ceiling |
 | `TIMESTREAM_LOCAL_NOTIFICATION_URL` | none | Where scheduled-query completion callbacks are POSTed |
 | `TIMESTREAM_LOCAL_LOG_REQUESTS` | `false` | Log every request when `true` |
+| `TIMESTREAM_LOCAL_UI` | `true` | Serve the read-only browser at `/`; `false` disables it |
 | `TIMESTREAM_LOCAL_S3_ENDPOINT` | none | S3-compatible endpoint for `UNLOAD`; unset disables it |
 | `TIMESTREAM_LOCAL_S3_ACCESS_KEY_ID` | `minioadmin` | Object storage access key |
 | `TIMESTREAM_LOCAL_S3_SECRET_ACCESS_KEY` | `minioadmin` | Object storage secret key |

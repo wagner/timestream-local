@@ -1,0 +1,82 @@
+# Changelog
+
+Notable changes, newest first. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+versioning follows [semver](https://semver.org/spec/v2.0.0.html).
+
+Anything user-visible — a feature, a fix, a behaviour change — gets an entry under
+**Unreleased** when it lands, not when it ships. Releasing moves that section under
+a version heading; see [Releasing](README.md#releasing).
+
+## [Unreleased]
+
+### Added
+
+- A read-only browser at `GET /`: databases, their tables and columns, and a
+  query box. Reads through the same query path clients use, so column types and
+  TIMESERIES values render as an SDK would see them. No authentication, matching
+  the rest of the server — set `TIMESTREAM_LOCAL_UI=false` to turn it off.
+
+## [1.0.1] - 2026-08-30
+
+### Changed
+
+- Test fixtures and documentation use generic names throughout.
+- README version references are derived from the `VERSION` constant rather than
+  written out, and the release workflow reads that constant without loading the
+  library — a mismatch between the two had failed the first release run.
+
+## [1.0.0] - 2026-08-30
+
+First public release. A local stand-in compatible with Amazon Timestream for
+LiveAnalytics, speaking the real wire protocol so an AWS SDK talks to it with
+nothing changed but the endpoint.
+
+### Added
+
+- **Write API** — databases and tables, single- and multi-measure `WriteRecords`,
+  `CommonAttributes`, all four `TimeUnit` values, and Timestream's versioned
+  upsert semantics including `RejectedRecordsException` with `ExistingVersion`.
+  Columns are created on write, as the real service does.
+- **Query API** — `Query` with `MaxRows`/`NextToken` pagination, `PrepareQuery`,
+  `CancelQuery`, and `SHOW`/`DESCRIBE` answered from the catalog.
+- **Trino-flavoured functions** — `ago`, `bin`, `date_trunc`, `date_add`,
+  `date_diff`, the `from_`/`to_` conversions, `to_iso8601`, `if`, `count_if`,
+  `max_by`, `min_by`, `xxhash64`, `to_base64`, `from_base64`, and
+  `create_time_series` with the TIMESERIES wire shape.
+- **Scheduled queries** — create, delete, describe, list and execute. No
+  scheduler: runs happen only on `ExecuteScheduledQuery`, binding
+  `@scheduled_runtime`, writing results into the configured target table, and
+  posting an SNS-shaped completion callback asynchronously.
+- **`UNLOAD`** to S3-compatible storage, writing CSV plus a manifest and
+  returning the `rows`/`metadataFile`/`manifestFile` summary. Unsupported until
+  `TIMESTREAM_LOCAL_S3_ENDPOINT` is set, rather than silently writing nowhere.
+- Multi-architecture image published to GitHub Container Registry, built frozen
+  against the committed lockfile so a rebuilt tag installs the same gems.
+
+### Fixed
+
+Every one of these returned a plausible wrong answer rather than an error, which
+is the failure mode this project has to design against.
+
+- `CAST(x AS varbinary)` fell through SQLite's affinity rules to NUMERIC and
+  evaluated to `0`, so every hash was the hash of `"0"`. Also `CAST(x AS
+  TIMESTAMP)` evaluating to `2026` and `CAST('true' AS BOOLEAN)` to `0`.
+- `time + 1m` had the timestamp coerced to a number, yielding arithmetic
+  nonsense without raising.
+- Unresolvable double-quoted identifiers were silently reinterpreted as string
+  literals by SQLite's legacy rule, so joins on them were quietly always false.
+  Identifiers are now backtick-quoted, which has no such fallback, and a table
+  written `db.table` is aliased to its bare name so `"table"."column"` resolves.
+- Interval-shaped text *inside* an identifier was read as arithmetic: a table
+  named `…-41830d` became `date_add_ns(…, -…)` and failed to resolve. Identifiers
+  are now masked to opaque terms before any expression rule runs.
+- Timestamp literals were compared as text against fixed-width stored values, so
+  `<=` excluded the boundary row and `=` matched nothing while `>=` worked.
+- `LIKE` folded ASCII case, unlike Trino.
+- A result column took its type from the catalog even when the values could not
+  have come from that column, so `to_iso8601(time) AS time` reported as
+  `TIMESTAMP`.
+
+[Unreleased]: https://github.com/wagner/timestream-local/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/wagner/timestream-local/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/wagner/timestream-local/releases/tag/v1.0.0

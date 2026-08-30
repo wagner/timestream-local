@@ -14,6 +14,7 @@ require_relative "timestream_local/store"
 require_relative "timestream_local/write_api"
 require_relative "timestream_local/query_api"
 require_relative "timestream_local/scheduled_query_api"
+require_relative "timestream_local/web_ui"
 require_relative "timestream_local/server"
 
 module TimestreamLocal
