@@ -1,6 +1,6 @@
 ---
 name: release
-description: Cut a release of timestream-local — pick the version from the Unreleased changelog entries, bump the VERSION constant, close the changelog section, verify, and hand over the git commands. Use when asked to release, cut a version, ship a version, or publish a new image tag.
+description: Cut a release of timestream-local — pick the version from the Unreleased changelog entries, bump the VERSION constant, close the changelog section, verify, then commit, push and tag. Use when asked to release, cut a version, ship a version, or publish a new image tag.
 ---
 
 # Releasing timestream-local
@@ -10,9 +10,18 @@ which runs the suite, refuses to continue if the tag and the `VERSION` constant
 disagree, builds `linux/amd64` + `linux/arm64`, pushes to ghcr.io, and smoke tests
 what it pushed.
 
-**Never run `git commit`, `git tag`, `git push`, or `gh release create` yourself.**
-Prepare the working tree, verify it, then print the commands for the user to run.
-This is a standing rule in this repo, not a per-release preference.
+Run the git commands yourself — committing, pushing and tagging a release are
+authorised in this repo. Releasing commits to `main` rather than a branch; that is
+deliberate, because the tag has to sit on the released commit.
+
+Two things are not negotiable, because pushing a tag publishes a public image:
+
+- **Verify before you push anything.** If step 4 fails, stop and report. Never
+  tag past a failure.
+- **Say what you are about to publish before you publish it** — the version, the
+  one-line summary, and which floating tags will move. Not to ask permission, but
+  so the action is legible before it is irreversible. A published tag can be
+  replaced, but anyone who pulled it in between already has it.
 
 ## Steps
 
@@ -70,9 +79,9 @@ TIMESTREAM_LOCAL_ENDPOINT=http://localhost:18080 bundle exec rake test
 docker stop "$CID"; docker rmi timestream-local:rc
 ```
 
-### 5. Hand over
+### 5. Publish
 
-Print exactly this, with the real version substituted:
+State the version, the commit summary, and which floating tags will move. Then:
 
 ```sh
 git add -A && git commit -m "X.Y.Z: <one line summarising the release>"
@@ -80,16 +89,14 @@ git push origin main
 git tag vX.Y.Z && git push origin vX.Y.Z
 ```
 
-Then tell the user:
+The last line is what publishes. A release moves `X.Y` and `X` onto the new
+version; anyone pinned to a full version is unaffected, anyone floating is not.
+Say that every time — a consumer mid-debug will not otherwise consider that the
+image changed underneath them.
 
-- **which floating tags will move.** A release moves `X.Y` and `X` onto it.
-  Anyone pinned to a full version is unaffected; anyone floating is not. Say this
-  every time — a consumer mid-debug will not otherwise consider that the image
-  changed underneath them.
-- **that the workflow is what publishes**, and roughly how long it takes (~5
-  minutes; the arm64 half compiles native gems under QEMU).
+The workflow takes ~5 minutes; the arm64 half compiles native gems under QEMU.
 
-### 6. After the user has pushed
+### 6. After the tag is pushed
 
 Confirm the artifact rather than trusting a green run:
 
@@ -100,7 +107,13 @@ docker pull ghcr.io/wagner/timestream-local:X.Y.Z
 ```
 
 Then run the suite against the pulled image. A published image that builds but
-does not boot is the failure this catches.
+does not boot is the failure this catches, and a green workflow does not prove it
+— the smoke test only checks that `/health` answers.
+
+Report the outcome either way. If the workflow failed, say so plainly and do not
+re-tag until the cause is understood: the first release here failed because the
+version check loaded the library without bundler, and re-tagging would only have
+reproduced it.
 
 ## Keeping the changelog honest
 
