@@ -27,7 +27,33 @@ module TimestreamLocal
       QUOTE = '"'
       UNLOAD_RE = /\Aunload\s*\(/i
 
+      # Real Timestream splits a large result across several files, on size. A row
+      # count is used here instead: the size it would split at is not reproducible
+      # locally, and a count is deterministic, so a consumer can be made to face
+      # the multi-file case on purpose. Not a claim about where the real service
+      # splits -- only that it does, and that a reader has to follow the manifest.
+      DEFAULT_MAX_ROWS_PER_FILE = 10_000
+
       Statement = Struct.new(:query, :bucket, :prefix, :options, keyword_init: true)
+
+      class << self
+        attr_writer :max_rows_per_file
+
+        # Assignment wins over the environment, so an in-process test can force a
+        # small value; anything non-positive falls back to the default.
+        def max_rows_per_file
+          value = if instance_variable_defined?(:@max_rows_per_file)
+                    @max_rows_per_file
+                  else
+                    ENV.fetch("TIMESTREAM_LOCAL_UNLOAD_MAX_ROWS_PER_FILE", nil)
+                  end
+          value.to_i.positive? ? value.to_i : DEFAULT_MAX_ROWS_PER_FILE
+        end
+
+        def reset_max_rows_per_file!
+          remove_instance_variable(:@max_rows_per_file) if instance_variable_defined?(:@max_rows_per_file)
+        end
+      end
 
       def self.statement?(sql)
         sql.match?(UNLOAD_RE)
@@ -126,25 +152,32 @@ module TimestreamLocal
         raise ValidationException, "UNLOAD compression #{compression} is not supported; use NONE or GZIP."
       end
 
-      # A single result file is written. Real Timestream may split across several,
-      # which is why the manifest is a list -- a reader that follows it works
-      # either way.
+      # Rows are split across files at MAX_ROWS_PER_FILE, in query order, since a
+      # reader concatenates them in manifest order. Each file stands on its own:
+      # its own gzip member when compressed, its own entry in the manifest. The
+      # header belongs to the result, not to the file, so only the first one
+      # carries it -- repeating it per file would land a header row in the middle
+      # of the concatenation.
       def write_results(store, base, columns, rows, types)
         return [] if rows.empty?
 
-        body = csv_body(columns, rows, types)
         gzip = @options["compression"].to_s.upcase == "GZIP"
-        key = "#{base}/results/#{SecureRandom.hex(8)}.csv#{gzip ? '.gz' : ''}"
-        payload = gzip ? gzip(body) : body
+        header = truthy?(@options["include_header"])
 
-        url = store.put(@statement.bucket, key, payload,
-                        content_type: gzip ? "application/gzip" : "text/csv")
-        [{ url: url, rows: rows.size, bytes: payload.bytesize }]
+        rows.each_slice(self.class.max_rows_per_file).with_index.map do |slice, index|
+          body = csv_body(columns, slice, types, header: header && index.zero?)
+          key = "#{base}/results/#{SecureRandom.hex(8)}.csv#{gzip ? '.gz' : ''}"
+          payload = gzip ? gzip(body) : body
+
+          url = store.put(@statement.bucket, key, payload,
+                          content_type: gzip ? "application/gzip" : "text/csv")
+          { url: url, rows: slice.size, bytes: payload.bytesize }
+        end
       end
 
-      def csv_body(columns, rows, types)
+      def csv_body(columns, rows, types, header:)
         lines = []
-        lines << columns.map { |name| field(name) }.join(delimiter) if truthy?(@options["include_header"])
+        lines << columns.map { |name| field(name) }.join(delimiter) if header
         rows.each do |row|
           lines << columns.each_with_index.map { |name, index|
             field(Types.format_scalar(row[index], types[name]))

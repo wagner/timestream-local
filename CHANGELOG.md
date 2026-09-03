@@ -9,6 +9,23 @@ a version heading; see [Releasing](README.md#releasing).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-03
+
+### Added
+
+- `TIMESTREAM_LOCAL_UNLOAD_MAX_ROWS_PER_FILE` sets the rows per `UNLOAD` result
+  file, 10,000 by default. Setting it low is how a consumer's test forces the
+  multi-file case without exporting a large result.
+
+### Changed
+
+- `UNLOAD` splits a result across several files instead of always writing one,
+  at `TIMESTREAM_LOCAL_UNLOAD_MAX_ROWS_PER_FILE` rows per file (10,000 by
+  default), so a consumer that concatenates what the manifest lists is exercised
+  on that path locally. Rows keep the query's order across files, the header row
+  is carried by the first file only, and under `GZIP` each file is its own gzip
+  member so the files concatenate into one readable document.
+
 ## [1.3.0] - 2026-08-30
 
 ### Added
@@ -112,7 +129,8 @@ is the failure mode this project has to design against.
   have come from that column, so `to_iso8601(time) AS time` reported as
   `TIMESTAMP`.
 
-[Unreleased]: https://github.com/wagner/timestream-local/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/wagner/timestream-local/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/wagner/timestream-local/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/wagner/timestream-local/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/wagner/timestream-local/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/wagner/timestream-local/compare/v1.0.1...v1.1.0

@@ -12,7 +12,7 @@ them back. It is not feature complete and does not try to be.
 Published to GitHub Container Registry, and public — no login is needed to pull.
 
 ```sh
-docker pull ghcr.io/wagner/timestream-local:1.3.0
+docker pull ghcr.io/wagner/timestream-local:1.4.0
 ```
 
 In another app's `docker-compose.yml`:
@@ -20,7 +20,7 @@ In another app's `docker-compose.yml`:
 ```yaml
 services:
   timestream:
-    image: ghcr.io/wagner/timestream-local:1.3.0
+    image: ghcr.io/wagner/timestream-local:1.4.0
     ports: ["8080:8080"]
     environment:
       TIMESTREAM_LOCAL_ADVERTISED_ENDPOINT: "http://localhost:8080"
@@ -281,6 +281,16 @@ Supported options are `format` (CSV only), `compression` (`NONE` or `GZIP`),
 delimiter, a quote or a newline is quoted; quotes inside are escaped with
 `escaped_by` rather than doubled. NULL is written as an empty unquoted field.
 
+A result is split across several files once it exceeds
+`TIMESTREAM_LOCAL_UNLOAD_MAX_ROWS_PER_FILE` rows (10,000 by default), each listed
+in the manifest with its own row count and byte count. Real Timestream splits on
+size; a row count is used here because the size it splits at is not reproducible
+locally, and a count is deterministic — so a consumer's test can force the
+multi-file case by setting the variable low. Rows keep the query's order across
+files, the header row is carried by the first file only, and under `GZIP` each
+file is its own gzip member, so the files concatenate byte-for-byte into one
+readable gzip document.
+
 **UNLOAD needs object storage, and is unsupported until it is configured** —
 without `TIMESTREAM_LOCAL_S3_ENDPOINT` it raises saying so, rather than appearing
 to succeed while writing nowhere. Point it at anything that speaks S3; nothing is
@@ -466,6 +476,7 @@ is asking something else.
 | `TIMESTREAM_LOCAL_S3_ACCESS_KEY_ID` | `minioadmin` | Object storage access key |
 | `TIMESTREAM_LOCAL_S3_SECRET_ACCESS_KEY` | `minioadmin` | Object storage secret key |
 | `TIMESTREAM_LOCAL_S3_REGION` | `us-east-1` | Object storage region |
+| `TIMESTREAM_LOCAL_UNLOAD_MAX_ROWS_PER_FILE` | `10000` | Rows per `UNLOAD` result file before it splits into another |
 
 ## How it works
 
