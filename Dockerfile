@@ -53,7 +53,11 @@ USER timestream
 VOLUME ["/data"]
 EXPOSE 8080
 
+# Bash rather than Ruby: booting the interpreter and requiring net/http costs
+# ~280ms a probe against ~28ms here, and at a 10s interval that is the single
+# largest CPU cost of an idle container. Bash is Essential in Debian, so its
+# /dev/tcp needs nothing added to the slim base -- curl and nc are absent.
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
-  CMD ruby -rnet/http -e 'exit(Net::HTTP.get_response(URI("http://127.0.0.1:#{ENV.fetch("TIMESTREAM_LOCAL_PORT","8080")}/health")).code == "200" ? 0 : 1)'
+  CMD ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/${TIMESTREAM_LOCAL_PORT:-8080} && printf 'GET /health HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && read -r line <&3 && [[ $line == 'HTTP/1.'[01]' 200 '* ]]"]
 
 CMD ["bundle", "exec", "ruby", "bin/timestream-local"]

@@ -27,12 +27,13 @@ services:
     volumes:
       - timestream-data:/data
     healthcheck:
+      # Kept in step with the image's own HEALTHCHECK, which this overrides.
+      # $$ escapes compose interpolation so bash sees $line.
       test:
         - CMD
-        - ruby
-        - -rnet/http
-        - -e
-        - 'exit(Net::HTTP.get_response(URI("http://127.0.0.1:8080/health")).code == "200" ? 0 : 1)'
+        - bash
+        - -c
+        - 'exec 3<>/dev/tcp/127.0.0.1/8080 && printf "GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n" >&3 && read -r line <&3 && [[ $$line == "HTTP/1."[01]" 200 "* ]]'
       interval: 10s
       timeout: 3s
       retries: 3

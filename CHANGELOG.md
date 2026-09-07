@@ -9,6 +9,12 @@ a version heading; see [Releasing](README.md#releasing).
 
 ## [Unreleased]
 
+### Changed
+
+- The container health check probes `/health` with bash's `/dev/tcp` instead of
+  booting Ruby and `net/http`, cutting a probe from ~280ms to ~28ms. At the 10s
+  interval this was the largest CPU cost of an idle container.
+
 ## [1.4.0] - 2026-09-03
 
 ### Added
