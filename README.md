@@ -12,7 +12,7 @@ them back. It is not feature complete and does not try to be.
 Published to GitHub Container Registry, and public — no login is needed to pull.
 
 ```sh
-docker pull ghcr.io/wagner/timestream-local:1.4.0
+docker pull ghcr.io/wagner/timestream-local:1.4.1
 ```
 
 In another app's `docker-compose.yml`:
@@ -20,7 +20,7 @@ In another app's `docker-compose.yml`:
 ```yaml
 services:
   timestream:
-    image: ghcr.io/wagner/timestream-local:1.4.0
+    image: ghcr.io/wagner/timestream-local:1.4.1
     ports: ["8080:8080"]
     environment:
       TIMESTREAM_LOCAL_ADVERTISED_ENDPOINT: "http://localhost:8080"

@@ -9,6 +9,8 @@ a version heading; see [Releasing](README.md#releasing).
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-09-07
+
 ### Changed
 
 - The container health check probes `/health` with bash's `/dev/tcp` instead of
@@ -135,7 +137,8 @@ is the failure mode this project has to design against.
   have come from that column, so `to_iso8601(time) AS time` reported as
   `TIMESTAMP`.
 
-[Unreleased]: https://github.com/wagner/timestream-local/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/wagner/timestream-local/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/wagner/timestream-local/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/wagner/timestream-local/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/wagner/timestream-local/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/wagner/timestream-local/compare/v1.1.0...v1.2.0
