@@ -15,12 +15,14 @@ module TimestreamLocal
   #     that reads, logs or asserts on the field; useless for predicting a bill.
   #
   # What they buy over the zeros they replace is that the fields move: a wider
-  # result meters more than a narrow one, and nothing is free.
+  # result meters more than a narrow one, and no query that read a table is
+  # free.
   module Metering
-    # The real service meters a floor per query, so a trivial one is not free.
-    # Keeping the floor is what makes a metered figure look metered rather than
-    # look like the row count it was derived from.
-    MINIMUM_METERED_BYTES = 10 * 1024 * 1024
+    # The real service meters a floor per query that reads a table, so a cheap
+    # one is not free. Decimal MB, not 10 * 1024 * 1024: verified against
+    # query.timestream.us-east-1.amazonaws.com, which reports exactly this for
+    # scans well under it.
+    MINIMUM_METERED_BYTES = 10_000_000
     # Per row, for the parts of a record that are not its values: time, version,
     # and the store's own bookkeeping.
     ROW_OVERHEAD_BYTES = 16
@@ -35,7 +37,14 @@ module TimestreamLocal
       rows.sum { |row| ROW_OVERHEAD_BYTES + row.sum { |value| value_bytes(value) } }
     end
 
+    # `scanned` is nil for a statement that read no table -- DESCRIBE, SHOW
+    # TABLES, `SELECT 1`. Real Timestream meters those at zero and applies no
+    # floor to them. Zero bytes is not the same signal: a query whose predicate
+    # matched nothing scans zero and is still charged the full floor there, so
+    # the split is on whether a table was read.
     def metered_bytes(scanned)
+      return 0 if scanned.nil?
+
       [scanned.to_i, MINIMUM_METERED_BYTES].max
     end
 

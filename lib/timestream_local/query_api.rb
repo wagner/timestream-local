@@ -8,6 +8,12 @@ module TimestreamLocal
   class QueryApi
     MAX_ROWS_LIMIT = 1_000
 
+    # A real QueryId is 63 characters of uppercase base32. Nothing should parse
+    # one, but a consumer sizing a column or asserting on the shape sees the
+    # real thing rather than a hex digest.
+    QUERY_ID_ALPHABET = (("A".."Z").to_a + ("2".."7").to_a).freeze
+    QUERY_ID_LENGTH = 63
+
     SHOW_DATABASES_RE = /\Ashow\s+databases\s*\z/i
     SHOW_TABLES_RE = /\Ashow\s+tables\s+(?:from|in)\s+(\S+)\s*\z/i
     SHOW_MEASURES_RE = /\Ashow\s+measures\s+(?:from|in)\s+(\S+)\s*\z/i
@@ -22,25 +28,29 @@ module TimestreamLocal
       raise ValidationException, "QueryString is required" if query_string.nil? || query_string.empty?
 
       max_rows = validate_max_rows(params["MaxRows"])
-      offset = decode_token(params["NextToken"], query_string)
+      # One QueryId covers every page of a query, as the real service does: it
+      # is minted for the first request and carried in the token from there.
+      offset, query_id = decode_token(params["NextToken"], query_string)
+      query_id ||= generate_query_id
 
       columns, rows, types, scanned = run(query_string)
       page, next_offset = paginate(rows, offset, max_rows)
-      # Scanned covers the whole result, not the page: the real service reports
-      # what the query read, which pagination does not change.
-      scanned ||= Metering.scanned_bytes(rows)
 
       response = {
-        "QueryId" => SecureRandom.hex(16),
+        "QueryId" => query_id,
         "ColumnInfo" => columns.map { |name| { "Name" => name, "Type" => column_type(types[name]) } },
         "Rows" => page.map { |row| serialize_row(row, columns, types) },
+        # Both figures cover the whole query, not the page: the real service
+        # reports what the query read, and paging an already-finished result
+        # set does not add to either. `scanned` is nil for a statement that
+        # read no table, which is reported and metered as zero.
         "QueryStatus" => {
           "ProgressPercentage" => 100.0,
-          "CumulativeBytesScanned" => scanned,
+          "CumulativeBytesScanned" => scanned.to_i,
           "CumulativeBytesMetered" => Metering.metered_bytes(scanned)
         }
       }
-      response["NextToken"] = encode_token(query_string, next_offset) if next_offset
+      response["NextToken"] = encode_token(query_string, query_id, next_offset) if next_offset
       response
     end
 
@@ -114,7 +124,10 @@ module TimestreamLocal
       # the Timestream original looks right, this is the line that says why.
       Log.event("sqlite", sql: sql, binds: (binds.join(", ") unless binds.empty?))
       columns, rows = @store.execute_sql(sql, binds)
-      [columns, rows, resolve_types(columns, rows, rewritten.tables), Metering.scanned_bytes(rows)]
+      # `SELECT 1` and friends name no table, so they read nothing and are not
+      # metered -- nil, not the size of the row the expression produced.
+      scanned = Metering.scanned_bytes(rows) unless rewritten.tables.empty?
+      [columns, rows, resolve_types(columns, rows, rewritten.tables), scanned]
     end
 
     # `time` is a timestamp in every Timestream table; TIMESTAMP measures are
@@ -205,12 +218,25 @@ module TimestreamLocal
       { "TimeSeriesValue" => points }
     end
 
+    # A result that fits in one page comes back whole. A larger one is streamed,
+    # and the real service's shape for that is worth reproducing exactly: the
+    # first response is dispatched before any row is ready, so it arrives empty
+    # carrying a token, and a full page always carries a token because the
+    # service cannot know it is the last until asked once more -- which is why a
+    # result dividing evenly into pages ends with an empty page too. Only a
+    # short page is recognisably final.
+    #
+    # A consumer that stops paging on an empty page therefore reads nothing at
+    # all from a paginated query. Returning only full pages, as this used to,
+    # hides that bug rather than catching it.
     def paginate(rows, offset, max_rows)
-      return [rows, nil] if max_rows.nil?
+      return [rows, nil] if max_rows.nil? || rows.size <= max_rows
+      return [[], 0] if offset.nil?
 
       page = rows[offset, max_rows] || []
       next_offset = offset + page.size
-      [page, next_offset < rows.size ? next_offset : nil]
+      more = next_offset < rows.size || page.size == max_rows
+      [page, more ? next_offset : nil]
     end
 
     def validate_max_rows(max_rows)
@@ -224,19 +250,27 @@ module TimestreamLocal
       max_rows
     end
 
-    def encode_token(query_string, offset)
-      Base64.urlsafe_encode64(JSON.dump("q" => digest(query_string), "o" => offset))
+    def encode_token(query_string, query_id, offset)
+      Base64.urlsafe_encode64(JSON.dump("q" => digest(query_string), "i" => query_id, "o" => offset))
     end
 
+    # `[offset, query_id]`, or `[nil, nil]` for a first request -- there is no
+    # page before the first one, which is what tells `paginate` to dispatch.
     def decode_token(token, query_string)
-      return 0 if token.nil? || token.empty?
+      return [nil, nil] if token.nil? || token.empty?
 
       payload = JSON.parse(Base64.urlsafe_decode64(token))
       raise ValidationException, "Invalid pagination token" unless payload["q"] == digest(query_string)
 
-      Integer(payload["o"])
-    rescue ArgumentError, JSON::ParserError
+      [Integer(payload["o"]), payload["i"]]
+    rescue ArgumentError, TypeError, JSON::ParserError
       raise ValidationException, "Invalid pagination token"
+    end
+
+    # 256 is a whole number of alphabets, so the bytes map on without bias.
+    def generate_query_id
+      SecureRandom.random_bytes(QUERY_ID_LENGTH).each_byte
+                  .map { |byte| QUERY_ID_ALPHABET[byte % QUERY_ID_ALPHABET.size] }.join
     end
 
     def digest(query_string)

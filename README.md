@@ -180,7 +180,25 @@ already provides (aggregates, `GROUP BY`, `JOIN`, CTEs, window functions).
 `DESCRIBE db.table` are answered from the catalog.
 
 Pagination works through `MaxRows` and `NextToken`; a token is bound to its query
-string, as it is in the real service.
+string, as it is in the real service. **Page until the token is nil, never until a
+page is empty** — a paginated query's first response arrives empty, carrying a
+token, and one whose rows divide evenly into pages ends on an empty page as well:
+
+| rows | `MaxRows` | pages |
+|---|---|---|
+| 200 | *(unset)* | one page of 200 |
+| 200 | 500 | one page of 200 |
+| 200 | 60 | 0, 60, 60, 60, 20 |
+| 200 | 50 | 0, 50, 50, 50, 50, 0 |
+| 0 | 50 | one empty page |
+
+The real service dispatches a query before any row is ready, and cannot know a
+full page is the last one until asked again; only a short page is recognisably
+final. A result that fits in one page skips all of it and comes back whole. These
+shapes are matched exactly against real Timestream.
+
+One `QueryId` covers every page of a query, and a separate run of the same SQL
+gets its own — 63 characters of uppercase base32, as the real service returns.
 
 ### Interval literals
 
@@ -345,9 +363,18 @@ run summary.
 `ExecutionStats`, and an UNLOAD manifest's `total_bytes_scanned` carry
 approximations rather than zeros. There is no scan accounting in SQLite to take a
 real figure from, so the model is: every value in a row is charged at the size it
-occupies here, plus a fixed per-row overhead; the metered figure keeps the
-floor a real query is charged (`Metering::MINIMUM_METERED_BYTES`, 10 MB), so a
-cheap query is not free.
+occupies here, plus a fixed per-row overhead.
+
+The rules around that model come from the real service and are matched exactly:
+
+- **A statement that reads no table is free.** `DESCRIBE`, `SHOW TABLES`,
+  `SHOW MEASURES`, `SHOW DATABASES` and an expression over no table (`SELECT 1`)
+  report zero scanned *and* zero metered. No floor is applied to them.
+- **A query that reads a table meters at least `Metering::MINIMUM_METERED_BYTES`**
+  — 10,000,000 bytes, decimal MB, *not* `10 * 1024 * 1024`. A consumer costing
+  queries out against a budget will be wrong by 4.9% if it hard-codes the binary
+  figure. The floor applies to a query that read a table even if its predicate
+  matched nothing.
 
 Two consequences, both worth knowing before asserting on the numbers:
 
@@ -357,9 +384,10 @@ Two consequences, both worth knowing before asserting on the numbers:
   reads, logs or asserts on the field; useless for predicting a bill.
 
 What they buy over the zeros they replace is that the fields move: a wider result
-meters more than a narrow one, more rows meter more than fewer, and paging does
-not change what the query read — every page reports the whole scan, as the real
-service does.
+meters more than a narrow one, and more rows meter more than fewer. Both figures
+are cumulative for the whole query and plateau once it has finished, so paging
+through a completed result set adds to neither — every page reports the whole,
+as the real service does.
 
 `WriteRecords` has no byte field in its response, so nothing is approximated
 there; `RecordsIngested` is a real count. A scheduled run's `DataWrites` is bytes

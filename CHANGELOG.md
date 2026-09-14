@@ -9,6 +9,33 @@ a version heading; see [Releasing](README.md#releasing).
 
 ## [Unreleased]
 
+### Fixed
+
+- Paginated queries have the real service's page shape. A query whose result
+  exceeds `MaxRows` now returns an empty first page carrying a token, and one
+  whose rows divide evenly into pages ends on an empty page too; a result that
+  fits in one page still comes back whole. **A consumer that stops paging when a
+  page has no rows now reads nothing from a paginated query — which is what it
+  would already get from real Timestream.** Only returning full pages, as this
+  did, hid that bug.
+- `QueryId` is one value for the whole query rather than a fresh one per page,
+  so it can be correlated across pages and passed to `CancelQuery`. It is now 63
+  characters of uppercase base32, matching the real service, not a 32-character
+  hex digest.
+
+- Query metering follows the real service's rules rather than approximating
+  through them. A statement that reads no table — `DESCRIBE`, `SHOW TABLES`,
+  `SHOW MEASURES`, `SHOW DATABASES`, `SELECT 1` — now reports
+  `CumulativeBytesScanned` and `CumulativeBytesMetered` as 0; it used to book a
+  scan from its own result rows and a full minimum on top.
+
+### Changed
+
+- `Metering::MINIMUM_METERED_BYTES` is 10,000,000 bytes, not `10 * 1024 * 1024`.
+  Real Timestream meters a scanned query at a decimal-MB floor; the binary figure
+  this reported was 4.9% high, and a consumer calibrated against this emulator
+  inherited that error.
+
 ## [1.4.1] - 2026-09-07
 
 ### Changed

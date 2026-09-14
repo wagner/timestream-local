@@ -132,22 +132,94 @@ class QueryApiTest < TimestreamTest
     end
   end
 
+  # Walks a paginated query the way a consumer has to: until the token runs
+  # out, not until a page comes back empty.
+  def pages_of(query, max_rows)
+    pages = []
+    token = nil
+    loop do
+      page = query_client.query(query_string: query, max_rows: max_rows, next_token: token)
+      pages << page
+      token = page.next_token
+      break if token.nil? || pages.size > 20
+    end
+    pages
+  end
+
+  # The real service dispatches a paginated query before any row is ready, so
+  # the first response arrives empty carrying a token. Verified against real
+  # Timestream: six rows at four per page come back as 0, 4, 2.
   def test_pagination_with_max_rows
     with_table do |database_name, table_name|
       seed(database_name, table_name, Time.now)
       query = %(SELECT cpu FROM "#{database_name}"."#{table_name}" ORDER BY cpu)
 
-      first = query_client.query(query_string: query, max_rows: 4)
-      assert_equal 4, first.rows.size
-      refute_nil first.next_token
+      pages = pages_of(query, 4)
 
-      second = query_client.query(query_string: query, max_rows: 4, next_token: first.next_token)
-      assert_equal 2, second.rows.size
-      assert_nil second.next_token
+      assert_equal [0, 4, 2], pages.map { |page| page.rows.size }
+      refute_nil pages.first.next_token
+      assert_nil pages.last.next_token
 
-      collected = (rows_as_hashes(first) + rows_as_hashes(second)).map { |row| row["cpu"] }
+      collected = pages.flat_map { |page| rows_as_hashes(page) }.map { |row| row["cpu"] }
       assert_equal %w[10.0 20.0 30.0 40.0 50.0 60.0], collected
     end
+  end
+
+  # A full page cannot be known to be the last, so it carries a token and the
+  # query ends on an empty page. Only a short page is recognisably final.
+  def test_an_even_division_ends_on_an_empty_page
+    with_table do |database_name, table_name|
+      seed(database_name, table_name, Time.now)
+      query = %(SELECT cpu FROM "#{database_name}"."#{table_name}" ORDER BY cpu)
+
+      pages = pages_of(query, 3)
+
+      assert_equal [0, 3, 3, 0], pages.map { |page| page.rows.size }
+      assert_equal 6, pages.sum { |page| page.rows.size }
+    end
+  end
+
+  # A result that fits in one page is not streamed: it comes back whole, with
+  # no dispatch page and no token. Same for a result of no rows at all.
+  def test_a_result_that_fits_in_one_page_is_not_streamed
+    with_table do |database_name, table_name|
+      seed(database_name, table_name, Time.now)
+      query = %(SELECT cpu FROM "#{database_name}"."#{table_name}")
+
+      whole = query_client.query(query_string: query, max_rows: 100)
+      assert_equal 6, whole.rows.size
+      assert_nil whole.next_token
+
+      empty = query_client.query(
+        query_string: %(SELECT cpu FROM "#{database_name}"."#{table_name}" WHERE cpu > 1000), max_rows: 4
+      )
+      assert_equal 0, empty.rows.size
+      assert_nil empty.next_token
+    end
+  end
+
+  # One QueryId covers the whole query -- it is what CancelQuery takes and what
+  # a log correlates on -- and a separate run of the same SQL gets its own.
+  def test_a_query_id_spans_every_page_of_one_query
+    with_table do |database_name, table_name|
+      seed(database_name, table_name, Time.now)
+      query = %(SELECT cpu FROM "#{database_name}"."#{table_name}" ORDER BY cpu)
+
+      pages = pages_of(query, 4)
+      assert_equal 3, pages.size
+      assert_equal 1, pages.map(&:query_id).uniq.size
+
+      refute_equal pages.first.query_id, pages_of(query, 4).first.query_id
+    end
+  end
+
+  # 63 characters of uppercase base32, as the real service returns. Nothing
+  # should parse one, but a consumer that stores it sees the real shape.
+  def test_a_query_id_looks_like_the_real_service
+    id = query_client.query(query_string: "SELECT 1").query_id
+
+    assert_equal 63, id.length
+    assert_match(/\A[A-Z2-7]{63}\z/, id)
   end
 
   def test_pagination_token_is_bound_to_the_query
