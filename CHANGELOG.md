@@ -9,6 +9,8 @@ a version heading; see [Releasing](README.md#releasing).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-14
+
 ### Fixed
 
 - Paginated queries have the real service's page shape. A query whose result
@@ -22,7 +24,6 @@ a version heading; see [Releasing](README.md#releasing).
   so it can be correlated across pages and passed to `CancelQuery`. It is now 63
   characters of uppercase base32, matching the real service, not a 32-character
   hex digest.
-
 - Query metering follows the real service's rules rather than approximating
   through them. A statement that reads no table — `DESCRIBE`, `SHOW TABLES`,
   `SHOW MEASURES`, `SHOW DATABASES`, `SELECT 1` — now reports
@@ -164,7 +165,8 @@ is the failure mode this project has to design against.
   have come from that column, so `to_iso8601(time) AS time` reported as
   `TIMESTAMP`.
 
-[Unreleased]: https://github.com/wagner/timestream-local/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/wagner/timestream-local/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/wagner/timestream-local/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/wagner/timestream-local/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/wagner/timestream-local/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/wagner/timestream-local/compare/v1.2.0...v1.3.0
