@@ -9,6 +9,20 @@ a version heading; see [Releasing](README.md#releasing).
 
 ## [Unreleased]
 
+### Fixed
+
+- Result column types follow Trino's rules instead of being guessed from
+  values. An integer literal was reported as `BIGINT` where Trino reports
+  `INTEGER`, so a consumer that only handled `BIGINT` passed its tests here and
+  read the column as nil against real Timestream. Literals that fit in 32 bits
+  are now `INTEGER`, a `UNION` widens to the common supertype
+  (`INTEGER` beside `BIGINT` is `BIGINT`), `COUNT`, `SUM` and ranking functions
+  are `BIGINT`, and the types carry through CTEs, subqueries and joins. As part
+  of the same change, a computed comparison is `BOOLEAN` `true`/`false` rather
+  than `BIGINT` `1`/`0`, `CAST(time AS VARCHAR)` is `VARCHAR` rather than
+  `TIMESTAMP`, and a query returning no rows reports its columns' types rather
+  than `UNKNOWN`.
+
 ## [1.5.0] - 2026-09-14
 
 ### Fixed

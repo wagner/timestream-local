@@ -402,14 +402,13 @@ and no longer the same number.
 - No throttling and no quotas. Metering figures are approximated rather than
   metered — see [Metering](#metering).
 - Requests are not authenticated.
-- A result column's type comes from the catalog only when its values are
-  consistent with it, so an expression aliased over a real column's name
-  (`to_iso8601(time) AS time`) is typed from what it returns rather than from the
-  column whose name it borrowed.
-- A computed boolean comes back as `BIGINT` `1`/`0` rather than `BOOLEAN`
-  `true`/`false`. SQLite has no boolean type, so an expression's type cannot be
-  recovered from its value. Declared `BOOLEAN` measure columns are unaffected —
-  their type comes from the catalog.
+- Result column types are read from the SQL with Trino's rules — an integer
+  literal is `INTEGER`, `COUNT` and `SUM` are `BIGINT`, a `UNION` takes each
+  column's common supertype, a comparison is `BOOLEAN` — through CTEs, subqueries
+  and joins. Where that reader cannot follow an expression (an unknown function,
+  interval arithmetic, `UNNEST`), the column is typed from its values instead,
+  and SQLite cannot tell a value's type apart there: every integer is `BIGINT`
+  and a boolean comes back as `BIGINT` `1`/`0`.
 - `ORDER BY` puts NULLs first ascending and last descending; Trino does the
   opposite. Add an explicit `NULLS FIRST`/`NULLS LAST` where it matters.
 - Scheduled queries are never run on a schedule, only by `ExecuteScheduledQuery`.

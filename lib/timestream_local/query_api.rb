@@ -127,7 +127,14 @@ module TimestreamLocal
       # `SELECT 1` and friends name no table, so they read nothing and are not
       # metered -- nil, not the size of the row the expression produced.
       scanned = Metering.scanned_bytes(rows) unless rewritten.tables.empty?
-      [columns, rows, resolve_types(columns, rows, rewritten.tables), scanned]
+      static = Query::Typer.new(statement, method(:catalog_columns)).column_types
+      [columns, rows, resolve_types(columns, rows, rewritten.tables, static), scanned]
+    end
+
+    def catalog_columns(database_name, table_name)
+      return nil unless @store.table_exists?(database_name, table_name)
+
+      @store.describe_columns(database_name, table_name).map { |column| column.values_at("column_name", "ts_type") }
     end
 
     # `time` is a timestamp in every Timestream table; TIMESTAMP measures are
@@ -140,18 +147,36 @@ module TimestreamLocal
       end.uniq
     end
 
-    # Declared catalog types win; anything computed is inferred from its values.
-    # A TIMESERIES column is detected first: create_time_series() may be aliased
-    # to the name of a real column, and the alias must not inherit that column's
-    # scalar type.
-    def resolve_types(columns, rows, tables)
+    # The type read from the SQL wins where the values bear it out; failing
+    # that, declared catalog types win; anything else is inferred from its
+    # values. A TIMESERIES column is detected first: create_time_series() may be
+    # aliased to the name of a real column, and the alias must not inherit that
+    # column's scalar type.
+    def resolve_types(columns, rows, tables, static = nil)
       declared = tables.each_with_object({}) do |(database_name, table_name), acc|
         acc.merge!(@store.column_types(database_name, table_name))
       end
+      static = nil unless static&.size == columns.size
 
       columns.each_with_object({}).with_index do |(name, acc), index|
-        acc[name] = time_series_type(rows, index) || scalar_type(declared[name], sample(rows, index))
+        value = sample(rows, index)
+        acc[name] = time_series_type(rows, index) || static_type(static&.[](index), value) ||
+                    scalar_type(declared[name], value)
       end
+    end
+
+    # Stricter than the catalog check: a stored DOUBLE is always a Float and a
+    # stored BOOLEAN always 0 or 1, but a computed one has only the typer's word.
+    def static_type(type, value)
+      return nil if type.nil?
+      return type if value.nil?
+
+      consistent = case type
+                   when "DOUBLE" then value.is_a?(Float)
+                   when "BOOLEAN" then [0, 1].include?(value)
+                   else Types.consistent?(type, value)
+                   end
+      type if consistent
     end
 
     # A computed expression aliased to a real column's name must not inherit that

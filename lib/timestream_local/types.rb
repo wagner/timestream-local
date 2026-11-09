@@ -116,7 +116,7 @@ module TimestreamLocal
       case ts_type
       when "TIMESTAMP" then value.is_a?(String) && value.match?(TIMESTAMP_RE)
       when "VARCHAR" then value.is_a?(String)
-      when "BOOLEAN", "BIGINT" then value.is_a?(Integer)
+      when "BOOLEAN", "BIGINT", "INTEGER" then value.is_a?(Integer)
       when "DOUBLE" then value.is_a?(Numeric)
       else true
       end
