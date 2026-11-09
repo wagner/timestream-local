@@ -9,6 +9,8 @@ a version heading; see [Releasing](README.md#releasing).
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-09
+
 ### Fixed
 
 - Result column types follow Trino's rules instead of being guessed from
@@ -179,7 +181,8 @@ is the failure mode this project has to design against.
   have come from that column, so `to_iso8601(time) AS time` reported as
   `TIMESTAMP`.
 
-[Unreleased]: https://github.com/wagner/timestream-local/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/wagner/timestream-local/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/wagner/timestream-local/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/wagner/timestream-local/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/wagner/timestream-local/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/wagner/timestream-local/compare/v1.3.0...v1.4.0
